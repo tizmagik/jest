@@ -14,7 +14,12 @@ import {statSync} from 'graceful-fs';
 import micromatch = require('micromatch');
 import type {Config} from '@jest/types';
 import {replacePathSepForRegex} from 'jest-regex-util';
-import Resolver from 'jest-resolve';
+import Resolver, {
+  resolveRunner,
+  resolveSequencer,
+  resolveTestEnvironment,
+  resolveWatchPlugin,
+} from 'jest-resolve';
 import {
   clearLine,
   replacePathSepForGlob,
@@ -35,14 +40,11 @@ import {
   DOCUMENTATION_NOTE,
   _replaceRootDirTags,
   escapeGlobCharacters,
-  getRunner,
-  getSequencer,
-  getTestEnvironment,
-  getWatchPlugin,
   replaceRootDirInPath,
   resolve,
 } from './utils';
 import validatePattern from './validatePattern';
+
 const ERROR = `${BULLET}Validation Error`;
 const PRESET_EXTENSIONS = ['.json', '.js', '.cjs', '.mjs'];
 const PRESET_NAME = 'jest-preset';
@@ -604,9 +606,12 @@ export default async function normalize(
     options.setupFilesAfterEnv.push(options.setupTestFrameworkScriptFile);
   }
 
-  options.testEnvironment = getTestEnvironment({
+  options.testEnvironment = resolveTestEnvironment({
+    requireResolveFunction: require.resolve,
     rootDir: options.rootDir,
-    testEnvironment: options.testEnvironment || DEFAULT_CONFIG.testEnvironment,
+    testEnvironment:
+      options.testEnvironment ||
+      require.resolve(DEFAULT_CONFIG.testEnvironment),
   });
 
   if (!options.roots && options.testPathDirs) {
@@ -634,9 +639,9 @@ export default async function normalize(
 
   setupBabelJest(options);
   // TODO: Type this properly
-  const newOptions = ({
+  const newOptions = {
     ...DEFAULT_CONFIG,
-  } as unknown) as AllOptions;
+  } as unknown as AllOptions;
 
   if (options.resolver) {
     newOptions.resolver = resolve(null, {
@@ -739,8 +744,9 @@ export default async function normalize(
           const option = oldOptions[key];
           value =
             option &&
-            getRunner(newOptions.resolver, {
+            resolveRunner(newOptions.resolver, {
               filePath: option,
+              requireResolveFunction: require.resolve,
               rootDir: options.rootDir,
             });
         }
@@ -1010,16 +1016,18 @@ export default async function normalize(
           if (typeof watchPlugin === 'string') {
             return {
               config: {},
-              path: getWatchPlugin(newOptions.resolver, {
+              path: resolveWatchPlugin(newOptions.resolver, {
                 filePath: watchPlugin,
+                requireResolveFunction: require.resolve,
                 rootDir: options.rootDir,
               }),
             };
           } else {
             return {
               config: watchPlugin[1] || {},
-              path: getWatchPlugin(newOptions.resolver, {
+              path: resolveWatchPlugin(newOptions.resolver, {
                 filePath: watchPlugin[0],
+                requireResolveFunction: require.resolve,
                 rootDir: options.rootDir,
               }),
             };
@@ -1051,17 +1059,23 @@ export default async function normalize(
     // ignored
   }
 
-  newOptions.testSequencer = getSequencer(newOptions.resolver, {
-    filePath: options.testSequencer || DEFAULT_CONFIG.testSequencer,
+  newOptions.testSequencer = resolveSequencer(newOptions.resolver, {
+    filePath:
+      options.testSequencer || require.resolve(DEFAULT_CONFIG.testSequencer),
+    requireResolveFunction: require.resolve,
     rootDir: options.rootDir,
   });
+
+  if (newOptions.runner === DEFAULT_CONFIG.runner) {
+    newOptions.runner = require.resolve(newOptions.runner);
+  }
 
   newOptions.nonFlagArgs = argv._?.map(arg => `${arg}`);
   newOptions.testPathPattern = buildTestPathPattern(argv);
   newOptions.json = !!argv.json;
 
   newOptions.testFailureExitCode = parseInt(
-    (newOptions.testFailureExitCode as unknown) as string,
+    newOptions.testFailureExitCode as unknown as string,
     10,
   );
 
@@ -1113,7 +1127,7 @@ export default async function normalize(
       : 'new';
 
   newOptions.maxConcurrency = parseInt(
-    (newOptions.maxConcurrency as unknown) as string,
+    newOptions.maxConcurrency as unknown as string,
     10,
   );
   newOptions.maxWorkers = getMaxWorkers(argv, options);

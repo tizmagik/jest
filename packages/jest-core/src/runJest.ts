@@ -12,19 +12,19 @@ import * as fs from 'graceful-fs';
 import {CustomConsole} from '@jest/console';
 import {
   AggregatedResult,
+  Test,
   formatTestResults,
   makeEmptyAggregatedTestResult,
 } from '@jest/test-result';
 import type TestSequencer from '@jest/test-sequencer';
 import type {Config} from '@jest/types';
 import type {ChangedFiles, ChangedFilesPromise} from 'jest-changed-files';
-import type {Test} from 'jest-runner';
 import type {Context} from 'jest-runtime';
 import {requireOrImportModule, tryRealpath} from 'jest-util';
 import {JestHook, JestHookEmitter} from 'jest-watcher';
 import type FailedTestsCache from './FailedTestsCache';
 import SearchSource from './SearchSource';
-import TestScheduler, {TestSchedulerContext} from './TestScheduler';
+import {TestSchedulerContext, createTestScheduler} from './TestScheduler';
 import type TestWatcher from './TestWatcher';
 import collectNodeHandles, {HandleCollectionResult} from './collectHandles';
 import getNoTestsFoundMessage from './getNoTestsFoundMessage';
@@ -75,7 +75,7 @@ type ProcessResultOptions = Pick<
   outputStream: NodeJS.WriteStream;
 };
 
-const processResults = (
+const processResults = async (
   runResults: AggregatedResult,
   options: ProcessResultOptions,
 ) => {
@@ -89,7 +89,7 @@ const processResults = (
   } = options;
 
   if (collectHandles) {
-    runResults.openHandles = collectHandles();
+    runResults.openHandles = await collectHandles();
   } else {
     runResults.openHandles = [];
   }
@@ -151,9 +151,9 @@ export default async function runJest({
   if (changedFilesPromise && globalConfig.watch) {
     const {repos} = await changedFilesPromise;
 
-    const noSCM = (Object.keys(repos) as Array<
-      keyof ChangedFiles['repos']
-    >).every(scm => repos[scm].size === 0);
+    const noSCM = (
+      Object.keys(repos) as Array<keyof ChangedFiles['repos']>
+    ).every(scm => repos[scm].size === 0);
     if (noSCM) {
       process.stderr.write(
         '\n' +
@@ -268,11 +268,13 @@ export default async function runJest({
     }
   }
 
-  const results = await new TestScheduler(
+  const scheduler = await createTestScheduler(
     globalConfig,
     {startRun},
     testSchedulerContext,
-  ).scheduleTests(allTests, testWatcher);
+  );
+
+  const results = await scheduler.scheduleTests(allTests, testWatcher);
 
   await sequencer.cacheResults(allTests, results);
 
@@ -280,7 +282,7 @@ export default async function runJest({
     await runGlobalHook({allTests, globalConfig, moduleName: 'globalTeardown'});
   }
 
-  processResults(results, {
+  await processResults(results, {
     collectHandles,
     json: globalConfig.json,
     onComplete,

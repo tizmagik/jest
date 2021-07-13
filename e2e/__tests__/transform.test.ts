@@ -226,6 +226,9 @@ describe('transform-snapshotResolver', () => {
     }
   };
 
+  beforeAll(() => {
+    runYarnInstall(dir);
+  });
   beforeEach(cleanupTest);
   afterAll(cleanupTest);
 
@@ -310,6 +313,35 @@ onNodeVersions('^12.17.0 || >=13.2.0', () => {
       const {json, stderr} = runWithJson(dir, ['--no-cache'], {
         nodeOptions: '--experimental-vm-modules',
       });
+      expect(stderr).toMatch(/PASS/);
+      expect(json.success).toBe(true);
+      expect(json.numPassedTests).toBe(1);
+    });
+  });
+
+  describe('transform-esm-runner', () => {
+    const dir = path.resolve(__dirname, '../transform/transform-esm-runner');
+    test('runs test with native ESM', () => {
+      const {json, stderr} = runWithJson(dir, ['--no-cache'], {
+        nodeOptions: '--experimental-vm-modules',
+      });
+
+      expect(stderr).toMatch(/PASS/);
+      expect(json.success).toBe(true);
+      expect(json.numPassedTests).toBe(1);
+    });
+  });
+
+  describe('transform-esm-testrunner', () => {
+    const dir = path.resolve(
+      __dirname,
+      '../transform/transform-esm-testrunner',
+    );
+    test('runs test with native ESM', () => {
+      const {json, stderr} = runWithJson(dir, ['--no-cache'], {
+        nodeOptions: '--experimental-vm-modules',
+      });
+
       expect(stderr).toMatch(/PASS/);
       expect(json.success).toBe(true);
       expect(json.numPassedTests).toBe(1);
